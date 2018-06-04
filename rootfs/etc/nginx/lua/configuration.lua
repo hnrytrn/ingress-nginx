@@ -1,5 +1,9 @@
+local json = require("cjson")
+
 -- this is the Lua representation of Configuration struct in internal/ingress/types.go
 local configuration_data = ngx.shared.configuration_data
+local cert_data = ngx.shared.cert_data
+local key_data = ngx.shared.key_data
 
 local _M = {
   nameservers = {}
@@ -29,11 +33,73 @@ local function fetch_request_body()
   return body
 end
 
+-- Returns the full chain certificate for a given host
+function _M.get_cert(host_name)
+  return cert_data:get(host_name)
+end
+
+-- Returns the private key for a given host
+function _M.get_cert_key(host_name)
+  return key_data:get(host_name)
+end
+
+-- Handler for the /configuration/certificates endpoint
+local function handle_cert_request()
+  if ngx.var.request_method ~= "POST" then
+    ngx.status = ngx.HTTP_BAD_REQUEST
+    ngx.print("Only POST requests are allowed!")
+    return
+  end
+
+  local cert_str = fetch_request_body()
+
+  local ok, certs = pcall(json.decode, cert_str)
+  if not ok then
+    ngx.log(ngx.ERR,  "could not parse certificate: " .. tostring(certs))
+    return
+  end
+
+  if not certs then
+    ngx.log(ngx.ERR, "certificate dynamic-configuration: unable to read valid request body")
+    ngx.status = ngx.HTTP_BAD_REQUEST
+    return
+  end
+
+  -- Update full chain certificates and private keys for each host
+  for _, cert in pairs(certs) do
+    if cert.HostName and cert.Cert and cert.FullChainCert then
+      if cert.FullChainCert == "" then
+        cert.FullChainCert = cert.Cert
+      end
+      local success, err = cert_data:set(cert.HostName, cert.FullChainCert)
+      if not success then
+        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting certificate: " .. tostring(err))
+        ngx.status = ngx.HTTP_BAD_REQUEST
+        return
+      end
+      success, err = key_data:set(cert.HostName, cert.Cert)
+      if not success then
+        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting key: " .. tostring(err))
+        ngx.status = ngx.HTTP_BAD_REQUEST
+        return
+      end
+    end
+  end
+
+  ngx.status = ngx.HTTP_CREATED
+  return
+end
+
 function _M.call()
   if ngx.var.request_method ~= "POST" and ngx.var.request_method ~= "GET" then
     ngx.status = ngx.HTTP_BAD_REQUEST
     ngx.print("Only POST and GET requests are allowed!")
     return
+  end
+
+  if ngx.var.request_uri == "/configuration/certificates" then
+    handle_cert_request();
+    return;
   end
 
   if ngx.var.request_uri ~= "/configuration/backends" then
