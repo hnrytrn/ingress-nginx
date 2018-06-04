@@ -816,3 +816,70 @@ func configureDynamically(pcfg *ingress.Configuration, port int) error {
 
 	return nil
 }
+
+// Certificate that will be stored in Lua
+type Certificate struct {
+	HostName      string
+	FullChainCert string
+	Cert          string
+}
+
+// configureCerts JSON encodes certificates and POSTs it to an internal HTTP endpoint
+// that is handled by Lua
+func configureCerts(pcfg *ingress.Configuration, port int) error {
+	var sslCerts []Certificate
+
+	for _, server := range pcfg.Servers {
+		glog.Infof("Path: ", server.SSLCertificate)
+		certFile, err := ioutil.ReadFile(server.SSLCertificate)
+		if err != nil {
+			glog.Infof("Error reading certificate - %s", err)
+			continue
+		}
+		cert := string(certFile)
+
+		fullChainCert := ""
+		fullChainCertFile, err := ioutil.ReadFile(server.SSLFullChainCertificate)
+		if err != nil {
+			glog.Infof("Error reading full chain certificate - %s", err)
+		} else {
+			fullChainCert = string(fullChainCertFile)
+		}
+
+		sslCerts = append(sslCerts, Certificate{
+			HostName:      server.Hostname,
+			FullChainCert: fullChainCert,
+			Cert:          cert,
+		})
+	}
+
+	if len(sslCerts) == 0 {
+		return nil
+	}
+
+	buf, err := json.Marshal(sslCerts)
+
+	if err != nil {
+		return err
+	}
+
+	glog.V(2).Infof("posting certificates: %s", buf)
+
+	url := fmt.Sprintf("http://localhost:%d/configuration/certificates", port)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(buf))
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			glog.Warningf("error while closing response body: \n%v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Unexpected error code: %d", resp.StatusCode)
+	}
+
+	return nil
+}

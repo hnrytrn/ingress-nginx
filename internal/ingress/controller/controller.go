@@ -196,6 +196,14 @@ func (n *NGINXController) syncIngress(interface{}) error {
 			} else {
 				glog.Warningf("could not dynamically reconfigure: %v", err)
 			}
+
+			// Configuring certificates
+			err = configureCerts(&pcfg, n.cfg.ListenPorts.Status)
+			if err == nil {
+				glog.Infof("dynamic certificate reconfiguration succeeded")
+			} else {
+				glog.Warningf("could not dynamically reconfigure certificate: %v", err)
+			}
 		}(isFirstSync)
 	}
 
