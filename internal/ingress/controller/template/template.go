@@ -196,8 +196,6 @@ func buildLuaSharedDictionaries(s interface{}, dynamicConfigurationEnabled bool,
 			"lua_shared_dict balancer_ewma 1M",
 			"lua_shared_dict balancer_ewma_last_touched_at 1M",
 			"lua_shared_dict sticky_sessions 1M",
-			"lua_shared_dict cert_data 10M",
-			"lua_shared_dict key_data 10M",
 		)
 	}
 

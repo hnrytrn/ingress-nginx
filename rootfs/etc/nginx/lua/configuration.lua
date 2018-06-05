@@ -2,8 +2,9 @@ local json = require("cjson")
 
 -- this is the Lua representation of Configuration struct in internal/ingress/types.go
 local configuration_data = ngx.shared.configuration_data
-local cert_data = ngx.shared.cert_data
-local key_data = ngx.shared.key_data
+
+local cert_ext = "_cert"
+local key_ext = "_key"
 
 local _M = {
   nameservers = {}
@@ -35,12 +36,12 @@ end
 
 -- Returns the full chain certificate for a given host
 function _M.get_cert(host_name)
-  return cert_data:get(host_name)
+  return configuration_data:get(host_name .. cert_ext)
 end
 
 -- Returns the private key for a given host
 function _M.get_cert_key(host_name)
-  return key_data:get(host_name)
+  return configuration_data:get(host_name .. key_ext)
 end
 
 -- Handler for the /configuration/certificates endpoint
@@ -71,13 +72,13 @@ local function handle_cert_request()
       if cert.FullChainCert == "" then
         cert.FullChainCert = cert.Cert
       end
-      local success, err = cert_data:set(cert.HostName, cert.FullChainCert)
+      local success, err = configuration_data:set(cert.HostName .. cert_ext, cert.FullChainCert)
       if not success then
         ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting certificate: " .. tostring(err))
         ngx.status = ngx.HTTP_BAD_REQUEST
         return
       end
-      success, err = key_data:set(cert.HostName, cert.Cert)
+      success, err = configuration_data:set(cert.HostName .. key_ext, cert.Cert)
       if not success then
         ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting key: " .. tostring(err))
         ngx.status = ngx.HTTP_BAD_REQUEST
