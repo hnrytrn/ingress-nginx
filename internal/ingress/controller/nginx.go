@@ -750,6 +750,19 @@ func (n *NGINXController) setupSSLProxy() {
 	}()
 }
 
+// Helper function to clear Certificates from the ingress configuration since they should be ignored when
+// checking if the new configuration changes can be applied dynamically
+func clearCertificates(config *ingress.Configuration){
+	var clearedServers []*ingress.Server
+	for _, server := range config.Servers {
+		copyOfServer := *server
+		copyOfServer.SSLCertificate = ""
+		copyOfServer.SSLFullChainCertificate = ""
+		clearedServers = append(clearedServers, &copyOfServer)
+	}
+	config.Servers = clearedServers
+}
+
 // IsDynamicConfigurationEnough decides if the new configuration changes can be dynamically applied without reloading
 func (n *NGINXController) IsDynamicConfigurationEnough(pcfg *ingress.Configuration) bool {
 	copyOfRunningConfig := *n.runningConfig
@@ -757,6 +770,8 @@ func (n *NGINXController) IsDynamicConfigurationEnough(pcfg *ingress.Configurati
 
 	copyOfRunningConfig.Backends = []*ingress.Backend{}
 	copyOfPcfg.Backends = []*ingress.Backend{}
+	clearCertificates(&copyOfRunningConfig)
+	clearCertificates(&copyOfPcfg)
 
 	return copyOfRunningConfig.Equal(&copyOfPcfg)
 }
