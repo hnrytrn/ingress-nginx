@@ -752,12 +752,11 @@ func (n *NGINXController) setupSSLProxy() {
 
 // Helper function to clear Certificates from the ingress configuration since they should be ignored when
 // checking if the new configuration changes can be applied dynamically
-func clearCertificates(config *ingress.Configuration){
+func clearCertificates(config *ingress.Configuration) {
 	var clearedServers []*ingress.Server
 	for _, server := range config.Servers {
 		copyOfServer := *server
 		copyOfServer.SSLCertificate = ""
-		copyOfServer.SSLFullChainCertificate = ""
 		clearedServers = append(clearedServers, &copyOfServer)
 	}
 	config.Servers = clearedServers
@@ -832,20 +831,12 @@ func configureDynamically(pcfg *ingress.Configuration, port int) error {
 	return nil
 }
 
-// Certificate that will be stored in Lua
-type Certificate struct {
-	HostName      string
-	FullChainCert string
-	Cert          string
-}
-
 // configureCerts JSON encodes certificates and POSTs it to an internal HTTP endpoint
 // that is handled by Lua
 func configureCerts(pcfg *ingress.Configuration, port int) error {
-	var sslCerts []Certificate
+	servers := make([]*ingress.Server, len(pcfg.Servers))
 
 	for _, server := range pcfg.Servers {
-		glog.Infof("Path: ", server.SSLCertificate)
 		certFile, err := ioutil.ReadFile(server.SSLCertificate)
 		if err != nil {
 			glog.Infof("Error reading certificate - %s", err)
@@ -853,34 +844,21 @@ func configureCerts(pcfg *ingress.Configuration, port int) error {
 		}
 		cert := string(certFile)
 
-		fullChainCert := ""
-		fullChainCertFile, err := ioutil.ReadFile(server.SSLFullChainCertificate)
-		if err != nil {
-			glog.Infof("Error reading full chain certificate - %s", err)
-		} else {
-			fullChainCert = string(fullChainCertFile)
-		}
-
-		sslCerts = append(sslCerts, Certificate{
-			HostName:      server.Hostname,
-			FullChainCert: fullChainCert,
-			Cert:          cert,
+		servers = append(servers, &ingress.Server{
+			Hostname:       server.Hostname,
+			SSLCertificate: cert,
 		})
 	}
 
-	if len(sslCerts) == 0 {
-		return nil
-	}
-
-	buf, err := json.Marshal(sslCerts)
+	buf, err := json.Marshal(servers)
 
 	if err != nil {
 		return err
 	}
 
-	glog.V(2).Infof("posting certificates: %s", buf)
+	glog.Infof("posting servers: %s", buf)
 
-	url := fmt.Sprintf("http://localhost:%d/configuration/certificates", port)
+	url := fmt.Sprintf("http://localhost:%d/configuration/servers", port)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(buf))
 	if err != nil {
 		return err
