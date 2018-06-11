@@ -3,9 +3,6 @@ local json = require("cjson")
 -- this is the Lua representation of Configuration struct in internal/ingress/types.go
 local configuration_data = ngx.shared.configuration_data
 
-local cert_ext = "_cert"
-local key_ext = "_key"
-
 local _M = {
   nameservers = {}
 }
@@ -34,57 +31,44 @@ local function fetch_request_body()
   return body
 end
 
--- Returns the full chain certificate for a given host
-function _M.get_cert(host_name)
-  return configuration_data:get(host_name .. cert_ext)
+-- Returns the certificate for a given host
+function _M.get_cert(hostname)
+  local servers_data = configuration_data:get("servers")
+  local ok, servers = pcall(json.decode, servers_data)
+  if not ok then
+    ngx.log(ngx.ERR,  "could not parse servers: " .. tostring(servers))
+    return
+  end
+
+  for _, server in pairs(servers) do
+    if server.Hostname == hostname and server.SSLCertificate then
+      return server.SSLCertificate
+    end
+  end
+
+  ngx.log(ngx.ERR, string.format("Certificate for %s not found", hostname))
+  return
 end
 
--- Returns the private key for a given host
-function _M.get_cert_key(host_name)
-  return configuration_data:get(host_name .. key_ext)
-end
-
--- Handler for the /configuration/certificates endpoint
-local function handle_cert_request()
+local function handle_server_request()
   if ngx.var.request_method ~= "POST" then
     ngx.status = ngx.HTTP_BAD_REQUEST
     ngx.print("Only POST requests are allowed!")
     return
   end
 
-  local cert_str = fetch_request_body()
-
-  local ok, certs = pcall(json.decode, cert_str)
-  if not ok then
-    ngx.log(ngx.ERR,  "could not parse certificate: " .. tostring(certs))
-    return
-  end
-
-  if not certs then
+  local servers = fetch_request_body()
+  if not servers then
     ngx.log(ngx.ERR, "certificate dynamic-configuration: unable to read valid request body")
     ngx.status = ngx.HTTP_BAD_REQUEST
     return
   end
 
-  -- Update full chain certificates and private keys for each host
-  for _, cert in pairs(certs) do
-    if cert.HostName and cert.Cert and cert.FullChainCert then
-      if cert.FullChainCert == "" then
-        cert.FullChainCert = cert.Cert
-      end
-      local success, err = configuration_data:set(cert.HostName .. cert_ext, cert.FullChainCert)
-      if not success then
-        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting certificate: " .. tostring(err))
-        ngx.status = ngx.HTTP_BAD_REQUEST
-        return
-      end
-      success, err = configuration_data:set(cert.HostName .. key_ext, cert.Cert)
-      if not success then
-        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting key: " .. tostring(err))
-        ngx.status = ngx.HTTP_BAD_REQUEST
-        return
-      end
-    end
+  local success, err = configuration_data:set("servers", servers)
+  if not success then
+    ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting servers: " .. tostring(err))
+    ngx.status = ngx.HTTP_BAD_REQUEST
+    return
   end
 
   ngx.status = ngx.HTTP_CREATED
@@ -98,9 +82,9 @@ function _M.call()
     return
   end
 
-  if ngx.var.request_uri == "/configuration/certificates" then
-    handle_cert_request();
-    return;
+  if ngx.var.request_uri == "/configuration/servers" then
+    handle_server_request()
+    return
   end
 
   if ngx.var.request_uri ~= "/configuration/backends" then
