@@ -753,47 +753,10 @@ stream {
         ssl_stapling_verify                     on;
         {{ end }}
 
-        {{ if not $all.DisableLua }}
+        {{ if and (not $all.DisableLua) $all.DynamicConfigurationEnabled }}
         ssl_certificate_by_lua_block {
-            local configuration = require("configuration")
-            local ssl = require "ngx.ssl"
-
-            -- clear the fallback certificates and private keys
-            -- set by the ssl_certificate and ssl_certificate_key
-            -- directives above:
-            local ok, err = ssl.clear_certs()
-            if not ok then
-               ngx.log(ngx.ERR, "failed to clear existing (fallback) certificates")
-               return ngx.exit(ngx.ERROR)
-            end
-            
-            local pem_cert = assert(configuration.get_cert("{{ $server.Hostname }}"))
-
-            local der_cert, err = ssl.cert_pem_to_der(pem_cert)
-            if not der_cert then
-                ngx.log(ngx.ERR, "failed to convert certificate chain from PEM to DER: ", err)
-                return ngx.exit(ngx.ERROR)
-            end
-
-            local ok, err = ssl.set_der_cert(der_cert)
-            if not ok then
-                ngx.log(ngx.ERR, "failed to set DER cert: ", err)
-                return ngx.exit(ngx.ERROR)
-            end
-
-            local pem_pkey = assert(configuration.get_cert_key("{{ $server.Hostname }}"))
-
-            local der_pkey, err = ssl.priv_key_pem_to_der(pem_pkey)
-            if not der_pkey then
-                ngx.log(ngx.ERR, "failed to convert private key from PEM to DER: ", err)
-                return ngx.exit(ngx.ERROR)
-            end
-
-            local ok, err = ssl.set_der_priv_key(der_pkey)
-            if not ok then
-                ngx.log(ngx.ERR, "failed to set DER private key: ", err)
-                return ngx.exit(ngx.ERROR)
-            end
+            local lua_certificate = require("certificate")
+            lua_certificate.call()
         }
         {{ end }}
         {{ end }}
