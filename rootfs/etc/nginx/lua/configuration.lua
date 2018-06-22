@@ -33,42 +33,53 @@ end
 
 -- Returns the certificate for a given host
 function _M.get_cert(hostname)
-  local servers_data = configuration_data:get("servers")
-  local ok, servers = pcall(json.decode, servers_data)
-  if not ok then
-    ngx.log(ngx.ERR,  "could not parse servers: " .. tostring(servers))
-    return
-  end
-
-  for _, server in pairs(servers) do
-    if server.Hostname == hostname and server.SSLCertificate then
-      return server.SSLCertificate
-    end
-  end
-
-  ngx.log(ngx.ERR, string.format("Certificate for %s not found", hostname))
-  return
+  return configuration_data:get(hostname .. cert_ext)
 end
 
-local function handle_server_request()
+-- Returns the private key for a given host
+function _M.get_priv_key(hostname)
+  return configuration_data:get(hostname .. key_ext)
+end
+
+local function handle_cert_request()
   if ngx.var.request_method ~= "POST" then
     ngx.status = ngx.HTTP_BAD_REQUEST
     ngx.print("Only POST requests are allowed!")
     return
   end
 
-  local servers = fetch_request_body()
-  if not servers then
+  local cert_str = fetch_request_body()
+
+  local ok, certs = pcall(json.decode, cert_str)
+  if not ok then
+    ngx.log(ngx.ERR,  "could not parse certificate: " .. tostring(certs))
+    return
+  end
+
+  if not certs then
     ngx.log(ngx.ERR, "certificate dynamic-configuration: unable to read valid request body")
     ngx.status = ngx.HTTP_BAD_REQUEST
     return
   end
 
-  local success, err = configuration_data:set("servers", servers)
-  if not success then
-    ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting servers: " .. tostring(err))
-    ngx.status = ngx.HTTP_BAD_REQUEST
-    return
+  -- Update certificates and private keys for each host
+  for _, cert in pairs(certs) do
+    if cert.Hostname and cert.SSLCertificate and cert.PrivateKey then
+      local success, err = configuration_data:set(cert.Hostname .. cert_ext, cert.SSLCertificate)
+      if not success then
+        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting certificate: "
+            .. tostring(err), cert.Hostname)
+        ngx.status = ngx.HTTP_BAD_REQUEST
+        return
+      end
+      success, err = configuration_data:set(cert.Hostname .. key_ext, cert.PrivateKey)
+      if not success then
+        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting key: "
+            .. tostring(err), cert.Hostname)
+        ngx.status = ngx.HTTP_BAD_REQUEST
+        return
+      end
+    end
   end
 
   ngx.status = ngx.HTTP_CREATED
@@ -82,9 +93,9 @@ function _M.call()
     return
   end
 
-  if ngx.var.request_uri == "/configuration/servers" then
-    handle_server_request()
-    return
+  if ngx.var.request_uri == "/configuration/certificates" then
+    handle_cert_request();
+    return;
   end
 
   if ngx.var.request_uri ~= "/configuration/backends" then
