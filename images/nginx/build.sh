@@ -20,14 +20,13 @@ set -o nounset
 set -o pipefail
 
 export NGINX_VERSION=1.13.12
-export NDK_VERSION=0.3.0
-export VTS_VERSION=0.1.16
+export NDK_VERSION=0.3.1rc1
 export SETMISC_VERSION=0.31
 export STICKY_SESSIONS_VERSION=08a395c66e42
 export MORE_HEADERS_VERSION=0.33
 export NGINX_DIGEST_AUTH=274490cec649e7300fea97fed13d84e596bbc0ce
 export NGINX_SUBSTITUTIONS=bc58cb11844bc42735bbaef7085ea86ace46d05b
-export NGINX_OPENTRACING_VERSION=0.3.0
+export NGINX_OPENTRACING_VERSION=0.5.0
 export OPENTRACING_CPP_VERSION=1.4.0
 export ZIPKIN_CPP_VERSION=0.3.1
 export JAEGER_VERSION=0.4.1
@@ -35,7 +34,8 @@ export MODSECURITY_VERSION=1.0.0
 export LUA_NGX_VERSION=0.10.13
 export LUA_UPSTREAM_VERSION=0.07
 export COOKIE_FLAG_VERSION=1.1.0
-export NGINX_INFLUXDB_VERSION=41eef3df53d867483037bb84dd4816c9a9a4c24b
+export NGINX_INFLUXDB_VERSION=f20cfb2458c338f162132f5a21eb021e2cbe6383
+export GEOIP2_VERSION=2.0
 
 export BUILD_PATH=/tmp/build
 
@@ -85,19 +85,42 @@ clean-install \
   libcurl4-openssl-dev \
   procps \
   git g++ pkgconf flex bison doxygen libyajl-dev liblmdb-dev libtool dh-autoreconf libxml2 libpcre++-dev libxml2-dev \
+  lua-cjson \
   python \
   luarocks \
+  libmaxminddb-dev \
+  libcap2-bin \
   || exit 1
 
-ln -s /usr/lib/x86_64-linux-gnu/liblua5.1.so /usr/lib/liblua.so
+if [[ ${ARCH} == "x86_64" ]]; then
+  ln -s /usr/lib/x86_64-linux-gnu/liblua5.1.so /usr/lib/liblua.so
+  ln -s /usr/lib/x86_64-linux-gnu /usr/lib/lua-platform-path
+fi
 
-mkdir -p /etc/nginx
+if [[ ${ARCH} == "armv7l" ]]; then
+  ln -s /usr/lib/arm-linux-gnueabihf/liblua5.1.so /usr/lib/liblua.so
+  ln -s /usr/lib/arm-linux-gnueabihf /usr/lib/lua-platform-path
+fi
+
+if [[ ${ARCH} == "aarch64" ]]; then
+  ln -s /usr/lib/aarch64-linux-gnu/liblua5.1.so /usr/lib/liblua.so
+  ln -s /usr/lib/aarch64-linux-gnu /usr/lib/lua-platform-path
+fi
+
+if [[ ${ARCH} == "ppc64le" ]]; then
+  ln -s /usr/lib/powerpc64le-linux-gnu/liblua5.1.so /usr/lib/liblua.so
+  ln -s /usr/lib/powerpc64le-linux-gnu /usr/lib/lua-platform-path
+fi
 
 if [[ ${ARCH} == "s390x" ]]; then
+  ln -s /usr/lib/s390x-linux-gnu/liblua5.1.so /usr/lib/liblua.so
+  ln -s /usr/lib/s390x-linux-gnu /usr/lib/lua-platform-path
   # avoid error:
   # git: ../nptl/pthread_mutex_lock.c:81: __pthread_mutex_lock: Assertion `mutex->__data.__owner == 0' failed.
   git config --global pack.threads "1"
 fi
+
+mkdir -p /etc/nginx
 
 # Get the GeoIP data
 GEOIP_FOLDER=/etc/nginx/geoip
@@ -109,6 +132,8 @@ function geoip_get {
 geoip_get "GeoIP.dat.gz" "https://geolite.maxmind.com/download/geoip/database/GeoLiteCountry/GeoIP.dat.gz"
 geoip_get "GeoLiteCity.dat.gz" "https://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz"
 geoip_get "GeoIPASNum.dat.gz" "http://download.maxmind.com/download/geoip/database/asnum/GeoIPASNum.dat.gz"
+geoip_get "GeoLite2-City.mmdb.gz" "http://geolite.maxmind.com/download/geoip/database/GeoLite2-City.tar.gz"
+geoip_get "GeoLite2-ASN.mmdb.gz" "http://geolite.maxmind.com/download/geoip/database/GeoLite2-ASN.tar.gz"
 
 mkdir --verbose -p "$BUILD_PATH"
 cd "$BUILD_PATH"
@@ -117,14 +142,11 @@ cd "$BUILD_PATH"
 get_src fb92f5602cdb8d3ab1ad47dbeca151b185d62eedb67d347bbe9d79c1438c85de \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
-get_src 88e05a99a8a7419066f5ae75966fb1efc409bad4522d14986da074554ae61619 \
+get_src 49f50d4cd62b166bc1aaf712febec5e028d9f187cedbc27a610dfd01bdde2d36 \
         "https://github.com/simpl/ngx_devel_kit/archive/v$NDK_VERSION.tar.gz"
 
 get_src 97946a68937b50ab8637e1a90a13198fe376d801dc3e7447052e43c28e9ee7de \
         "https://github.com/openresty/set-misc-nginx-module/archive/v$SETMISC_VERSION.tar.gz"
-
-get_src c668d0ed38afbba12f0224cb8cf5d70dcb9388723766dfb40d00539f887186fa \
-        "https://github.com/vozlt/nginx-module-vts/archive/v$VTS_VERSION.tar.gz"
 
 get_src a3dcbab117a9c103bc1ea5200fc00a7b7d2af97ff7fd525f16f8ac2632e30fbf \
         "https://github.com/openresty/headers-more-nginx-module/archive/v$MORE_HEADERS_VERSION.tar.gz"
@@ -138,7 +160,7 @@ get_src ede0ad490cb9dd69da348bdea2a60a4c45284c9777b2f13fa48394b6b8e7671c \
 get_src 618551948ab14cac51d6e4ad00452312c7b09938f59ebff4f93875013be31f2d \
         "https://github.com/yaoweibin/ngx_http_substitutions_filter_module/archive/$NGINX_SUBSTITUTIONS.tar.gz"
 
-get_src 2d2b8784a09c7bb4ae7f8a76ab679c54a683b8dda26db2f948982de0ad44c7a5 \
+get_src ad6c813cb8baa4a178417bfa316ab3535d950fe02c67dc3a4af96ef6a1f655d6 \
         "https://github.com/opentracing-contrib/nginx-opentracing/archive/v$NGINX_OPENTRACING_VERSION.tar.gz"
 
 get_src 2eb0a4a7dc62bc8cbf12872080197b41d53b4c04966c860774a6b11fd59fad55 \
@@ -192,8 +214,11 @@ get_src d81b33129c6fb5203b571fa4d8394823bf473d8872c0357a1d0f14420b1483bd \
 get_src 76d8638a350a0484b3d6658e329ba38bb831d407eaa6dce2a084a27a22063133 \
         "https://github.com/openresty/luajit2/archive/v2.1-20180420.tar.gz"
 
-get_src 3926d41fb23fc2f4e54773f3c847153f6f17195a03677f9624e740605c49a771 \
+get_src 1897d7677d99c1cedeb95b2eb00652a4a7e8e604304c3053a93bd3ba7dd82884 \
         "https://github.com/influxdata/nginx-influxdb-module/archive/$NGINX_INFLUXDB_VERSION.tar.gz"
+
+get_src ebb4652c4f9a2e1ee31fddefc4c93ff78e651a4b2727d3453d026bccbd708d99 \
+        "https://github.com/leev/ngx_http_geoip2_module/archive/${GEOIP2_VERSION}.tar.gz"
 
 
 # improve compilation times
@@ -207,8 +232,6 @@ export HUNTER_JOBS_NUMBER=${CORES}
 if [[ ${ARCH} == "x86_64" ]]; then
   luarocks install lrexlib-pcre 2.7.2-1
 fi
-
-luarocks install lua-cjson 2.1.0.6-1
 
 # luajit is not available on ppc64le and s390x
 if [[ (${ARCH} != "ppc64le") && (${ARCH} != "s390x") ]]; then
@@ -354,6 +377,7 @@ Include /etc/nginx/owasp-modsecurity-crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTE
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
 
 WITH_FLAGS="--with-debug \
+  --with-compat \
   --with-pcre-jit \
   --with-http_ssl_module \
   --with-http_stub_status_module \
@@ -386,7 +410,6 @@ fi
 
 WITH_MODULES="--add-module=$BUILD_PATH/ngx_devel_kit-$NDK_VERSION \
   --add-module=$BUILD_PATH/set-misc-nginx-module-$SETMISC_VERSION \
-  --add-module=$BUILD_PATH/nginx-module-vts-$VTS_VERSION \
   --add-module=$BUILD_PATH/headers-more-nginx-module-$MORE_HEADERS_VERSION \
   --add-module=$BUILD_PATH/nginx-goodies-nginx-sticky-module-ng-$STICKY_SESSIONS_VERSION \
   --add-module=$BUILD_PATH/nginx-http-auth-digest-$NGINX_DIGEST_AUTH \
@@ -396,9 +419,8 @@ WITH_MODULES="--add-module=$BUILD_PATH/ngx_devel_kit-$NDK_VERSION \
   --add-module=$BUILD_PATH/nginx_cookie_flag_module-$COOKIE_FLAG_VERSION \
   --add-module=$BUILD_PATH/nginx-influxdb-module-$NGINX_INFLUXDB_VERSION \
   --add-dynamic-module=$BUILD_PATH/nginx-opentracing-$NGINX_OPENTRACING_VERSION/opentracing \
-  --add-dynamic-module=$BUILD_PATH/nginx-opentracing-$NGINX_OPENTRACING_VERSION/jaeger \
-  --add-dynamic-module=$BUILD_PATH/nginx-opentracing-$NGINX_OPENTRACING_VERSION/zipkin \
   --add-dynamic-module=$BUILD_PATH/ModSecurity-nginx-$MODSECURITY_VERSION \
+  --add-dynamic-module=$BUILD_PATH/ngx_http_geoip2_module-${GEOIP2_VERSION} \
   --add-module=$BUILD_PATH/ngx_brotli"
 
 ./configure \
@@ -430,6 +452,11 @@ echo "Cleaning..."
 
 cd /
 
+mv /usr/share/nginx/sbin/nginx /usr/sbin
+
+# allow binding to a port less than 1024 to non-root users
+setcap cap_net_bind_service=+ep /usr/sbin/nginx
+
 apt-mark unmarkauto \
   bash \
   curl ca-certificates \
@@ -455,13 +482,10 @@ apt-get remove -y --purge \
   linux-libc-dev \
   cmake \
   wget \
+  libcap2-bin \
   git g++ pkgconf flex bison doxygen libyajl-dev liblmdb-dev libgeoip-dev libtool dh-autoreconf libpcre++-dev libxml2-dev
 
 apt-get autoremove -y
-
-mkdir -p /var/lib/nginx/body /usr/share/nginx/html
-
-mv /usr/share/nginx/sbin/nginx /usr/sbin
 
 rm -rf "$BUILD_PATH"
 rm -Rf /usr/share/man /usr/share/doc
@@ -476,3 +500,22 @@ rm -rf /etc/nginx/owasp-modsecurity-crs/.git
 rm -rf /etc/nginx/owasp-modsecurity-crs/util/regression-tests
 
 rm -rf $HOME/.hunter
+
+# update image permissions
+writeDirs=( \
+  /etc/nginx \
+  /etc/ingress-controller/ssl \
+  /etc/ingress-controller/auth \
+  /var/log \
+  /var/log/nginx \
+  /var/lib/nginx/body \
+  /usr/share/nginx/html \
+  /opt/modsecurity/var/log \
+  /opt/modsecurity/var/upload \
+  /opt/modsecurity/var/audit \
+);
+
+for dir in "${writeDirs[@]}"; do
+  mkdir -p ${dir};
+  chown -R www-data.www-data ${dir};
+done
