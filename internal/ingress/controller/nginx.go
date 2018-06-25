@@ -115,7 +115,8 @@ func NewNGINXController(config *Configuration, fs file.Filesystem) *NGINXControl
 		config.ResyncPeriod,
 		config.Client,
 		fs,
-		n.updateCh)
+		n.updateCh,
+		config.DynamicConfigurationEnabled)
 
 	n.syncQueue = task.NewTaskQueue(n.syncIngress)
 
@@ -722,7 +723,7 @@ func clearCertificates(config *ingress.Configuration) {
 	var clearedServers []*ingress.Server
 	for _, server := range config.Servers {
 		copyOfServer := *server
-		copyOfServer.SSLCertificate = ""
+		copyOfServer.SSLCert = ingress.SSLCert{}
 		clearedServers = append(clearedServers, &copyOfServer)
 	}
 	config.Servers = clearedServers
@@ -730,7 +731,6 @@ func clearCertificates(config *ingress.Configuration) {
 
 // IsDynamicConfigurationEnough returns whether a Configuration can be
 // dynamically applied, without reloading the backend.
->>>>>>> c196761afa493bf6c64f8100050dfbf961b2a331
 func (n *NGINXController) IsDynamicConfigurationEnough(pcfg *ingress.Configuration) bool {
 	copyOfRunningConfig := *n.runningConfig
 	copyOfPcfg := *pcfg
@@ -802,19 +802,14 @@ func configureDynamically(pcfg *ingress.Configuration, port int) error {
 // configureCerts JSON encodes certificates and POSTs it to an internal HTTP endpoint
 // that is handled by Lua
 func configureCerts(pcfg *ingress.Configuration, port int) error {
-	servers := make([]*ingress.Server, len(pcfg.Servers))
+	var servers []*ingress.Server
 
 	for _, server := range pcfg.Servers {
-		certFile, err := ioutil.ReadFile(server.SSLCertificate)
-		if err != nil {
-			glog.Infof("Error reading certificate - %s", err)
-			continue
-		}
-		cert := string(certFile)
-
 		servers = append(servers, &ingress.Server{
-			Hostname:       server.Hostname,
-			SSLCertificate: cert,
+			Hostname: server.Hostname,
+			SSLCert: ingress.SSLCert{
+				PemCertKey: server.SSLCert.PemCertKey,
+			},
 		})
 	}
 

@@ -1039,6 +1039,12 @@ func (n *NGINXController) createServers(data []*extensions.Ingress,
 
 			servers[host].SSLCert = *cert
 
+			if n.cfg.DynamicConfigurationEnabled {
+				// Certificates won't be written on disk during dynamic configuration mode
+				servers[host].SSLCert.PemFileName = defaultPemFileName
+				servers[host].SSLCert.PemSHA = defaultPemSHA
+			}
+
 			if cert.ExpireTime.Before(time.Now().Add(240 * time.Hour)) {
 				glog.Warningf("SSL certificate for server %q is about to expire (%v)", host, cert.ExpireTime)
 			}
