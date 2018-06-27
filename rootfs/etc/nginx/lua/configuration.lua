@@ -31,14 +31,9 @@ local function fetch_request_body()
   return body
 end
 
--- Returns the certificate for a given host
-function _M.get_cert(hostname)
-  return configuration_data:get(hostname .. cert_ext)
-end
-
--- Returns the private key for a given host
-function _M.get_priv_key(hostname)
-  return configuration_data:get(hostname .. key_ext)
+-- Returns the certificate and key for a given host
+function _M.get_cert_key(hostname)
+  return configuration_data:get(hostname)
 end
 
 local function handle_cert_request()
@@ -64,18 +59,11 @@ local function handle_cert_request()
 
   -- Update certificates and private keys for each host
   for _, cert in pairs(certs) do
-    if cert.Hostname and cert.SSLCertificate and cert.PrivateKey then
-      local success, err = configuration_data:set(cert.Hostname .. cert_ext, cert.SSLCertificate)
+    if cert.hostname and cert.sslCert.pemCertKey then
+      local success, err = configuration_data:set(cert.hostname, cert.sslCert.pemCertKey)
       if not success then
         ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting certificate: "
-            .. tostring(err), cert.Hostname)
-        ngx.status = ngx.HTTP_BAD_REQUEST
-        return
-      end
-      success, err = configuration_data:set(cert.Hostname .. key_ext, cert.PrivateKey)
-      if not success then
-        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting key: "
-            .. tostring(err), cert.Hostname)
+            .. tostring(err), cert.hostname)
         ngx.status = ngx.HTTP_BAD_REQUEST
         return
       end
@@ -93,9 +81,9 @@ function _M.call()
     return
   end
 
-  if ngx.var.request_uri == "/configuration/certificates" then
-    handle_cert_request();
-    return;
+  if ngx.var.request_uri == "/configuration/servers" then
+    handle_cert_request()
+    return
   end
 
   if ngx.var.request_uri ~= "/configuration/backends" then
