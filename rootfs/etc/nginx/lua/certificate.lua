@@ -3,6 +3,38 @@ local configuration = require("configuration")
 
 local _M = {}
 
+local function set_pem_cert(pem_cert)
+    local der_cert, der_cert_err = ssl.cert_pem_to_der(pem_cert)
+    if not der_cert then
+        ngx.log(ngx.ERR, "failed to convert certificate chain from PEM to DER: ", der_cert_err)
+        return false
+    end
+
+    local set_cert_ok, set_cert_err = ssl.set_der_cert(der_cert)
+    if not set_cert_ok then
+        ngx.log(ngx.ERR, "failed to set DER cert: ", set_cert_err)
+        return false
+    end
+
+    return true
+end
+
+local function set_pem_priv_key(pem_priv_key)
+    local der_priv_key, dev_priv_key_err = ssl.priv_key_pem_to_der(pem_priv_key)
+    if not der_priv_key then
+        ngx.log(ngx.ERR, "failed to convert private key from PEM to DER: ", dev_priv_key_err)
+        return false
+    end
+
+    local set_priv_key_ok, set_priv_key_err = ssl.set_der_priv_key(der_priv_key)
+    if not set_priv_key_ok then
+        ngx.log(ngx.ERR, "failed to set DER private key: ", set_priv_key_err)
+        return false
+    end
+
+    return true
+end
+
 function _M.call()
     local hostname = ssl.server_name()
     print("Setting certificate for host - ", hostname)
@@ -22,29 +54,20 @@ function _M.call()
         return ngx.exit(ngx.ERROR)
     end
 
-    local der_cert, der_cert_err = ssl.cert_pem_to_der(pem_cert_key)
-    if not der_cert then
-        ngx.log(ngx.ERR, "failed to convert certificate chain from PEM to DER: ", der_cert_err)
+    local set_pem_cert_ok = set_pem_cert(pem_cert_key)
+    if not set_pem_cert_ok then
         return ngx.exit(ngx.ERROR)
     end
 
-    local set_cert_ok, set_cert_err = ssl.set_der_cert(der_cert)
-    if not set_cert_ok then
-        ngx.log(ngx.ERR, "failed to set DER cert: ", set_cert_err)
+    local set_pem_priv_key_ok = set_pem_priv_key(pem_cert_key)
+    if not set_pem_priv_key_ok then
         return ngx.exit(ngx.ERROR)
     end
+end
 
-    local der_priv_key, dev_priv_key_err = ssl.priv_key_pem_to_der(pem_cert_key)
-    if not der_priv_key then
-        ngx.log(ngx.ERR, "failed to convert private key from PEM to DER: ", dev_priv_key_err)
-        return ngx.exit(ngx.ERROR)
-    end
-
-    local set_priv_key_ok, set_priv_key_err = ssl.set_der_priv_key(der_priv_key)
-    if not set_priv_key_ok then
-        ngx.log(ngx.ERR, "failed to set DER private key: ", set_priv_key_err)
-        return ngx.exit(ngx.ERROR)
-    end
+if _TEST then
+    _M.set_pem_cert = set_pem_cert
+    _M.set_pem_priv_key = set_pem_priv_key
 end
 
 return _M
