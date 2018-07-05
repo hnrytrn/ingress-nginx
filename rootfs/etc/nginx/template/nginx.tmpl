@@ -85,6 +85,13 @@ http {
         else
           monitor = res
         end
+        ok, res = require("certificate")
+        if not ok then
+          error("require failed: " .. tostring(res))
+        else
+          certificate = res
+        end
+        {{ end }}
     }
 
     {{ if $all.DynamicConfigurationEnabled }}
@@ -755,7 +762,6 @@ stream {
 
         {{ if and (not $all.DisableLua) $all.DynamicConfigurationEnabled }}
         ssl_certificate_by_lua_block {
-            local lua_certificate = require("certificate")
             lua_certificate.call()
         }
         {{ end }}
