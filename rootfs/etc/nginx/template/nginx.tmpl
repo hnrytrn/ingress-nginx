@@ -762,7 +762,7 @@ stream {
 
         {{ if and (not $all.DisableLua) $all.DynamicConfigurationEnabled }}
         ssl_certificate_by_lua_block {
-            lua_certificate.call()
+            certificate.call()
         }
         {{ end }}
         {{ end }}
