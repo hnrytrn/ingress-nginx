@@ -760,7 +760,7 @@ stream {
         ssl_stapling_verify                     on;
         {{ end }}
 
-        {{ if and (not $all.DisableLua) $all.DynamicConfigurationEnabled }}
+        {{ if and (not $all.DisableLua) $all.DynamicCertificatesEnabled }}
         ssl_certificate_by_lua_block {
             certificate.call()
         }
