@@ -43,9 +43,9 @@ local function handle_cert_request()
     return
   end
 
-  local cert_str = fetch_request_body()
+  local raw_certs = fetch_request_body()
 
-  local ok, certs = pcall(json.decode, cert_str)
+  local ok, certs = pcall(json.decode, raw_certs)
   if not ok then
     ngx.log(ngx.ERR,  "could not parse certificate: " .. tostring(certs))
     return
@@ -57,21 +57,27 @@ local function handle_cert_request()
     return
   end
 
+  local err_buf = {}
   -- Update certificates and private keys for each host
   for _, cert in pairs(certs) do
     if cert.hostname and cert.sslCert.pemCertKey then
       local success, err = configuration_data:set(cert.hostname, cert.sslCert.pemCertKey)
       if not success then
-        ngx.log(ngx.ERR, "certificate dynamic-configuration: error setting certificate: "
-            .. tostring(err), cert.hostname)
-        ngx.status = ngx.HTTP_BAD_REQUEST
-        return
+        err_buf[#err_buf + 1] = string.format("certificate dynamic-configuration: " ..
+          "error setting certificate for %s: %s\n", cert.hostname, tostring(err))
       end
+    else
+      ngx.log(ngx.WARN, "certificate dynamic-configuration: hostname and pemCertKey are not present")
     end
   end
 
+  if table.getn(err_buf) > 0 then
+    ngx.log(ngx.ERR, table.concat(err_buf))
+    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+    return
+  end
+
   ngx.status = ngx.HTTP_CREATED
-  return
 end
 
 function _M.call()
