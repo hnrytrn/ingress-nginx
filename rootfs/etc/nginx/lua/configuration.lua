@@ -2,6 +2,7 @@ local json = require("cjson")
 
 -- this is the Lua representation of Configuration struct in internal/ingress/types.go
 local configuration_data = ngx.shared.configuration_data
+local certificate_data = ngx.shared.certificate_data
 
 local _M = {
   nameservers = {}
@@ -31,47 +32,42 @@ local function fetch_request_body()
   return body
 end
 
--- Returns the certificate and key for a given host
-function _M.get_cert_key(hostname)
-  return configuration_data:get(hostname)
+function _M.get_pem_cert_key(hostname)
+  return certificate_data:get(hostname)
 end
 
-local function handle_cert_request()
+local function handle_servers()
   if ngx.var.request_method ~= "POST" then
     ngx.status = ngx.HTTP_BAD_REQUEST
     ngx.print("Only POST requests are allowed!")
     return
   end
 
-  local raw_certs = fetch_request_body()
+  local raw_servers = fetch_request_body()
 
-  local ok, certs = pcall(json.decode, raw_certs)
+  local ok, servers = pcall(json.decode, raw_servers)
   if not ok then
-    ngx.log(ngx.ERR,  "could not parse certificate: " .. tostring(certs))
-    return
-  end
-
-  if not certs then
-    ngx.log(ngx.ERR, "certificate dynamic-configuration: unable to read valid request body")
+    ngx.log(ngx.ERR,  "could not parse servers: " .. tostring(servers))
     ngx.status = ngx.HTTP_BAD_REQUEST
     return
   end
 
   local err_buf = {}
   -- Update certificates and private keys for each host
-  for _, cert in pairs(certs) do
-    if cert.hostname and cert.sslCert.pemCertKey then
-      local success, err = configuration_data:set(cert.hostname, cert.sslCert.pemCertKey)
+  for _, server in ipairs(servers) do
+    if server.hostname and server.sslCert.pemCertKey then
+      local success, err = certificate_data:set(server.hostname, server.sslCert.pemCertKey)
       if not success then
-        err_buf[#err_buf + 1] = string.format("certificate dynamic-configuration: " ..
-          "error setting certificate for %s: %s\n", cert.hostname, tostring(err))
+        local err_msg = string.format("error setting certificate for %s: %s\n",
+          server.hostname, tostring(err))
+        table.insert(err_buf, err_msg)
       end
     else
-      ngx.log(ngx.WARN, "certificate dynamic-configuration: hostname and pemCertKey are not present")
+      ngx.log(ngx.WARN, "hostname or pemCertKey are not present")
     end
   end
 
-  if table.getn(err_buf) > 0 then
+  if #err_buf > 0 then
     ngx.log(ngx.ERR, table.concat(err_buf))
     ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
     return
@@ -88,7 +84,7 @@ function _M.call()
   end
 
   if ngx.var.request_uri == "/configuration/servers" then
-    handle_cert_request()
+    handle_servers()
     return
   end
 
@@ -119,6 +115,10 @@ function _M.call()
   end
 
   ngx.status = ngx.HTTP_CREATED
+end
+
+if _TEST then
+  _M.handle_servers = handle_servers
 end
 
 return _M
