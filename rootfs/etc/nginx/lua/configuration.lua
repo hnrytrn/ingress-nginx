@@ -56,8 +56,14 @@ local function handle_servers()
   -- Update certificates and private keys for each host
   for _, server in ipairs(servers) do
     if server.hostname and server.sslCert.pemCertKey then
-      local success, err = certificate_data:set(server.hostname, server.sslCert.pemCertKey)
+      local success, err = certificate_data:safe_set(server.hostname, server.sslCert.pemCertKey)
       if not success then
+        if err == "no memory" then
+          ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
+          ngx.log(ngx.ERR, "no memory in certificate_data dictionary")
+          return
+        end
+        
         local err_msg = string.format("error setting certificate for %s: %s\n",
           server.hostname, tostring(err))
         table.insert(err_buf, err_msg)
