@@ -34,9 +34,6 @@ function _M.call()
         return
     end
 
-    -- clear the fallback certificates and private keys
-    -- set by the ssl_certificate and ssl_certificate_key
-    -- directives above:
     local clear_ok, clear_err = ssl.clear_certs()
     if not clear_ok then
         ngx.log(ngx.ERR, "failed to clear existing (fallback) certificates: ", clear_err)

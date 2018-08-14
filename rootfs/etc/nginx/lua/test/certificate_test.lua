@@ -1,11 +1,4 @@
-package.path = "./rootfs/etc/nginx/lua/?.lua;./rootfs/etc/nginx/lua/test/mocks/?.lua;" .. package.path
 _G._TEST = true
-
-local _ngx = {
-  shared = {},
-  log = function(...) end,
-}
-_G.ngx = _ngx
 
 describe("Certificate", function()
     local certificate = require("certificate")
