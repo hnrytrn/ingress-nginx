@@ -28,7 +28,7 @@ end
 function _M.call()
     local hostname = ssl.server_name()
 
-    local pem_cert_key = configuration.get_cert_key(hostname)
+    local pem_cert_key = configuration.get_pem_cert_key(hostname)
     if not pem_cert_key or pem_cert_key == "" then
         ngx.log(ngx.ERR, "Certificate not found for the given hostname: ", hostname)
         return
