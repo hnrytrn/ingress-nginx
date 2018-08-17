@@ -38,7 +38,7 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 	f := framework.NewDefaultFramework("dynamic-certificate")
 
 	BeforeEach(func() {
-		err := enableDynamicConfiguration(f.IngressController.Namespace, f.KubeClientSet)
+		err := enableDynamicCertificates(f.IngressController.Namespace, f.KubeClientSet)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = f.NewEchoDeploymentWithReplicas(1)
@@ -150,8 +150,8 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(log).ToNot(BeEmpty())
 
-			By("POSTing new backends to Lua endpoint")
-			Expect(restOfLogs).ToNot(ContainSubstring("certificate dynamic-configuration: unable to read valid request body"))
+			By("POSTing new servers to Lua endpoint")
+			Expect(restOfLogs).ToNot(ContainSubstring("dynamic-configuration: unable to read valid request body"))
 		})
 	})
 })
