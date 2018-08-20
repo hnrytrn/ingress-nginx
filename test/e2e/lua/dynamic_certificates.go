@@ -17,6 +17,7 @@ limitations under the License.
 package lua
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"strings"
@@ -49,8 +50,7 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ing).NotTo(BeNil())
 
-		// give some time for Lua to sync the backend
-		time.Sleep(5 * time.Second)
+		time.Sleep(waitForLuaSync)
 
 		resp, _, errs := gorequest.New().
 			Get(f.IngressController.HTTPURL).
@@ -89,7 +89,7 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 
 			_, err = f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.IngressController.Namespace).Update(ingress)
 			Expect(err).ToNot(HaveOccurred())
-			time.Sleep(5 * time.Second)
+			time.Sleep(waitForLuaSync)
 
 			log, err := f.NginxLogs()
 			Expect(err).ToNot(HaveOccurred())
@@ -108,12 +108,10 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 			Expect(restOfLogs).To(ContainSubstring(logSkipBackendReload))
 			Expect(restOfLogs).ToNot(ContainSubstring(logInitialConfigSync))
 		})
+	})
 
-		It("should be able to update SSL certificate even when the update POST size(request body) > size(client_body_buffer_size)", func() {
-			// Update client-body-buffer-size to 1 byte
-			err := f.UpdateNginxConfigMapData("client-body-buffer-size", "1")
-			Expect(err).NotTo(HaveOccurred())
-
+	Context("when certificates are requested", func() {
+		It("should serve certificates dynamically from Lua", func() {
 			ingress, err := f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.IngressController.Namespace).Get("foo.com", metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
 
@@ -132,26 +130,30 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 
 			_, err = f.KubeClientSet.ExtensionsV1beta1().Ingresses(f.IngressController.Namespace).Update(ingress)
 			Expect(err).ToNot(HaveOccurred())
-			time.Sleep(5 * time.Second)
+			time.Sleep(waitForLuaSync)
 
+			By("checking SSL Certificate using the NGINX IP address")
 			resp, _, errs := gorequest.New().
-				Get(f.IngressController.HTTPURL).
-				Set("Host", "foo.com").
+				Get(f.IngressController.HTTPSURL).
+				Set("Host", ingress.Spec.TLS[0].Hosts[0]).
+				TLSClientConfig(&tls.Config{
+					InsecureSkipVerify: true,
+				}).
 				End()
+
 			Expect(len(errs)).Should(BeNumerically("==", 0))
-			Expect(resp.StatusCode).Should(Equal(http.StatusOK))
+			Expect(len(resp.TLS.PeerCertificates)).Should(BeNumerically("==", 1))
+			for _, pc := range resp.TLS.PeerCertificates {
+				Expect(pc.Issuer.CommonName).Should(Equal("default"))
+			}
 
-			log, err := f.NginxLogs()
-			Expect(err).ToNot(HaveOccurred())
-			Expect(log).ToNot(BeEmpty())
-			index := strings.Index(log, "POST /configuration/servers HTTP/1.1")
-			restOfLogs := log[index:]
-
-			Expect(err).ToNot(HaveOccurred())
-			Expect(log).ToNot(BeEmpty())
-
-			By("POSTing new servers to Lua endpoint")
-			Expect(restOfLogs).ToNot(ContainSubstring("dynamic-configuration: unable to read valid request body"))
+			By("checking that only the default certificate is written on disk")
+			err = f.WaitForNginxServer(ingress.Spec.TLS[0].Hosts[0],
+				func(server string) bool {
+					return strings.Contains(server, "ssl_certificate /etc/ingress-controller/ssl/default-fake-certificate.pem;") &&
+						strings.Contains(server, "ssl_certificate_key /etc/ingress-controller/ssl/default-fake-certificate.pem;")
+				})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })
