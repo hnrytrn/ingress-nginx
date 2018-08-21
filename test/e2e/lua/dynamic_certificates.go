@@ -143,11 +143,9 @@ var _ = framework.IngressNginxDescribe("Dynamic Certificate", func() {
 
 			Expect(len(errs)).Should(BeNumerically("==", 0))
 			Expect(len(resp.TLS.PeerCertificates)).Should(BeNumerically("==", 1))
-			for _, pc := range resp.TLS.PeerCertificates {
-				Expect(pc.Issuer.CommonName).Should(Equal("default"))
-			}
+			Expect(resp.TLS.PeerCertificates[0].DNSNames[0]).Should(Equal("foo.com"))
 
-			By("checking that only the default certificate is written on disk")
+			By("checking that the controller isn't configuring the server's certificate in the configuration file")
 			err = f.WaitForNginxServer(ingress.Spec.TLS[0].Hosts[0],
 				func(server string) bool {
 					return strings.Contains(server, "ssl_certificate /etc/ingress-controller/ssl/default-fake-certificate.pem;") &&

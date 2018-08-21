@@ -85,6 +85,8 @@ http {
         else
           monitor = res
         end
+
+        {{ if $all.DynamicCertificatesEnabled }}
         ok, res = require("certificate")
         if not ok then
           error("require failed: " .. tostring(res))

@@ -30,25 +30,25 @@ function _M.call()
 
   if hostname_err then
     ngx.log(ngx.ERR, "Error getting the hostname: " .. hostname_err)
-    ngx.exit(ngx.ERROR)
+    return ngx.exit(ngx.ERROR)
   end
 
   local pem_cert_key = configuration.get_pem_cert_key(hostname)
   if not pem_cert_key then
     ngx.log(ngx.ERR, "Certificate not found for the given hostname: " .. hostname)
-    ngx.exit(ngx.ERROR)
+    return ngx.exit(ngx.ERROR)
   end
 
   local clear_ok, clear_err = ssl.clear_certs()
   if not clear_ok then
     ngx.log(ngx.ERR, "failed to clear existing (fallback) certificates: " .. clear_err)
-    ngx.exit(ngx.ERROR)
+    return ngx.exit(ngx.ERROR)
   end
 
   local set_pem_cert_key_err = set_pem_cert_key(pem_cert_key)
   if set_pem_cert_key_err then
     ngx.log(ngx.ERR, set_pem_cert_key_err)
-    ngx.exit(ngx.ERROR)
+    return ngx.exit(ngx.ERROR)
   end
 end
 
